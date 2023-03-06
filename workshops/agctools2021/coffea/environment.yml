@@ -1,7 +1,0 @@
-name: coffea
-channels:
-  - conda-forge
-dependencies:
-  - xxhash
-  - xrootd
-  - coffea>=0.7.0

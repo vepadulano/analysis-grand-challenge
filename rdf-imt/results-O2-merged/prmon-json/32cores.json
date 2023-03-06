@@ -1,0 +1,52 @@
+{
+  "Avg": {
+    "nprocs": 1.0,
+    "nthreads": 35.118,
+    "pss": 3420206.0,
+    "rchar": 75258011160.0,
+    "read_bytes": 0.0,
+    "rss": 3424130.0,
+    "rx_bytes": 79775925106.0,
+    "rx_packets": 52729693.0,
+    "swap": 0.0,
+    "tx_bytes": 109569047.0,
+    "tx_packets": 1219304.0,
+    "vmem": 5861841.0,
+    "wchar": 194354.0,
+    "write_bytes": 180501.0
+  },
+  "HW": {
+    "cpu": {
+      "CPUs": 128,
+      "CoresPerSocket": 64,
+      "ModelName": "AMD EPYC 7702P 64-Core Processor",
+      "Sockets": 1,
+      "ThreadsPerCore": 2
+    },
+    "mem": {
+      "MemTotal": 131755004
+    }
+  },
+  "Max": {
+    "nprocs": 1,
+    "nthreads": 37,
+    "pss": 4534643,
+    "rchar": 177608906339,
+    "read_bytes": 0,
+    "rss": 4538584,
+    "rx_bytes": 188271183252,
+    "rx_packets": 124442077,
+    "stime": 103,
+    "swap": 0,
+    "tx_bytes": 258582952,
+    "tx_packets": 2877559,
+    "utime": 3503,
+    "vmem": 7226992,
+    "wchar": 458677,
+    "write_bytes": 425984,
+    "wtime": 236
+  },
+  "prmon": {
+    "Version": "3.0.2"
+  }
+}
