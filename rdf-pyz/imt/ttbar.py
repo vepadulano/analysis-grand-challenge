@@ -45,9 +45,20 @@ def myinit():
     """)
 
 
+myinit()
+
+
 class TtbarAnalysis(dict):
 
-    def __init__(self, n_files_max_per_sample,  download_input_data, storage_location, use_merged_dataset, num_bins=25, bin_low=50, bin_high=550):
+    def __init__(
+            self,
+            n_files_max_per_sample,
+            download_input_data,
+            storage_location,
+            use_merged_dataset,
+            num_bins=25,
+            bin_low=50,
+            bin_high=550):
 
         # Store input arguments
         self.n_files_max_per_sample = n_files_max_per_sample  # the number of files to be processed per sample
@@ -137,13 +148,13 @@ class TtbarAnalysis(dict):
             # pt_scale_up() - jet energy scaly systematic
             # pt_res_up(jet_pt) - jet resolution systematic
 
-            d = d.Vary(
-                'jet_pt', "ROOT::RVec<ROOT::RVecF>{jet_pt*pt_scale_up(), jet_pt*pt_res_up_obj(jet_pt, rdfslot_)}", ["pt_scale_up", "pt_res_up"])
+            d = d.Vary("jet_pt", ROOT.JetPtVariationBuilder(), ["jet_pt"], ["pt_scale_up", "pt_res_up"])
             if process == 'wjets':
 
                 # flat weight variation definition
                 d = d.Vary('weights',
-                           "weights*flat_variation()",
+                           ROOT.VariedWeights(),
+                           ["weights"],
                            [f"scale_var_{direction}" for direction in ["up", "down"]]
                            )
 
@@ -159,7 +170,8 @@ class TtbarAnalysis(dict):
 
         # b-tagging variations for nominal samples
         d = d.Vary('weights',
-                   'ROOT::RVecD{weights*btag_weight_variation(jet_pt[jet_pt_mask])}',
+                   ROOT.BTagVariationBuilder(),
+                   ["jet_pt","jet_pt_mask","weights"],
                    [f"{weight_name}_{direction}" for weight_name in [f"btag_var_{i}" for i in range(4)] for direction in [
                        "up", "down"]]
                    ) if variation == 'nominal' else d
@@ -185,49 +197,32 @@ class TtbarAnalysis(dict):
                         .Define("jet_p4", utils.build_jetp4, ["jet_px", "jet_py", "jet_pz", "jet_mass", "jet_pt_mask"])
 
                 # building trijet combinations
-                fork = fork.Define('trijet',
-                                   utils.combinations, ["jet_pt","jet_pt_mask"]
-                                   ).Define('ntrijet', 'trijet[0].size()')
+                fork = fork.Define('trijet', utils.combinations, ["jet_pt", "jet_pt_mask"])\
+                           .Define('ntrijet', utils.get_ntrijet, ["trijet"])
 
                 # assigning four-momentums to each trijet combination
                 fork = fork.Define('trijet_p4',
-                                   'ROOT::VecOps::RVec<ROOT::Math::PxPyPzMVector> trijet_p4(ntrijet);' +
-                                   'for (int i = 0; i < ntrijet; ++i) {' +
-                                   'int j1 = trijet[0][i]; int j2 = trijet[1][i]; int j3 = trijet[2][i];' +
-                                   'trijet_p4[i] = jet_p4[j1] + jet_p4[j2] + jet_p4[j3];' +
-                                   '}' +
-                                   'return trijet_p4;'
+                                   utils.build_trijetp4,
+                                   ["jet_p4", "trijet", "ntrijet"]
                                    )
 
                 # getting trijet transverse momentum values from four-momentum vectors
                 fork = fork.Define('trijet_pt',
-                                   'return ROOT::VecOps::Map(trijet_p4, [](ROOT::Math::PxPyPzMVector v) { return v.Pt(); })'
+                                   utils.build_trijetpt,
+                                   ["trijet_p4"]
                                    )
 
                 # trijet_btag is a helpful array of bool values indicating whether or not the maximum btag value in trijet is larger than 0.5 threshold
                 fork = fork.Define('trijet_btag',
-                                   'ROOT::VecOps::RVec<bool> btag(ntrijet);' +
-                                   'for (int i = 0; i < ntrijet; ++i) {' +
-                                   'int j1 = trijet[0][i]; int j2 = trijet[1][i]; int j3 = trijet[2][i];' +
-                                   'btag[i]=std::max({jet_btag[j1], jet_btag[j2], jet_btag[j3]})>0.5;' +
-                                   '}' +
-                                   'return btag;'
+                                   utils.build_trijetbtag,
+                                   ["ntrijet", "trijet", "jet_btag"]
                                    )
+
                 # find trijet with maximum pt and higher that threshold btag
                 # get mass for found jet four-vector
                 # trijet mass themself is an observable quantity
                 fork = fork.Define(observable,
-                                   'double mass;' +
-                                   'double Pt = 0;' +
-                                   'double indx = 0;' +
-                                   'for (int i = 0; i < ntrijet; ++i) {' +
-                                   '    if ((Pt < trijet_pt[i]) && (trijet_btag[i])) {' +
-                                   '        Pt = trijet_pt[i];' +
-                                   '        indx=i;' +
-                                   '    }' +
-                                   '}' +
-                                   'mass = trijet_p4[indx].M();' +
-                                   'return mass;'
+                                   utils.build_observable, ["ntrijet", "trijet_pt", "trijet_btag", "trijet_p4"]
                                    )
 
             # fill histogram for observable column in RDF object
@@ -292,7 +287,6 @@ class TtbarAnalysis(dict):
 
 
 def analyse():
-    myinit()
     analysisManager = TtbarAnalysis(download_input_data=ARGS.download,
                                     n_files_max_per_sample=ARGS.n_files_max_per_sample,
                                     storage_location=ARGS.storage_location,
