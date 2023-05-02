@@ -9,10 +9,13 @@ venv/
 servicex.yml
 servicex.yaml
 
-analyses/**/*.root
-analyses/**/*.pdf
-analyses/**/*.npz
-
+**/*.root
+**/*.pdf
+**/*.npz
+**/*.png
+**/*.pcm
+**/*.d
+**/*.so
 workshops/agctools2021/HZZ_analysis_pipeline/**/*.root
 workshops/agctools2021/HZZ_analysis_pipeline/*/*.pdf
 workshops/agctools2021/HZZ_analysis_pipeline/*/*.png
