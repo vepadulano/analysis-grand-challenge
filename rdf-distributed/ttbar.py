@@ -8,7 +8,7 @@ from urllib.request import urlretrieve
 from ROOT import TCanvas, THStack
 import ROOT
 
-from distributed import Client, LocalCluster
+from distributed import Client, SSHCluster
 
 
 RDataFrame = ROOT.RDF.Experimental.Distributed.Dask.RDataFrame
@@ -17,8 +17,10 @@ VariationsFor = ROOT.RDF.Experimental.Distributed.VariationsFor
 initialize = ROOT.RDF.Experimental.Distributed.initialize
 
 PARSER = argparse.ArgumentParser()
-PARSER.add_argument("--ncores", help="Number of cores to use. Default os.cpu_count().",
-                    type=int, default=os.cpu_count())
+PARSER.add_argument("nodes", help="String containing the list of hostnames to be used.", type=str)
+PARSER.add_argument("ncores", help="How many cores to use per node.", type=int)
+PARSER.add_argument("npartitions", help="How many partitions to use.", type=int)
+PARSER.add_argument("--ntests", help="How many tests to run.", type=int, default=1)
 PARSER.add_argument("--n-files-max-per-sample", "-f",
                     help="How many files per sample will be processed. Default -1 (all files for all samples).",
                     type=int, default=-1)
@@ -37,15 +39,27 @@ if ARGS.verbose:
         ROOT.Detail.RDF.RDFLogChannel(), ROOT.Experimental.ELogLevel.kInfo)
 
 
-def create_connection() -> Client:
-    client = Client(
-        LocalCluster(n_workers=ARGS.ncores, threads_per_worker=1, processes=True)
-    )
+def create_connection(nodes, ncores) -> Client:
+    parsed_nodes = nodes.split(',')
+    scheduler = parsed_nodes[:1]
+    workers = parsed_nodes[1:]
+
+    print("List of nodes: scheduler ({}) and workers ({})".format(scheduler, workers))
+
+    cluster = SSHCluster(scheduler + workers,
+              connect_options={ "known_hosts": None },
+              worker_options={ "nprocs" : ncores, "nthreads": 1, "memory_limit" : "32GB", "local_directory" : "/tmp/vpadulan" })
+    client = Client(cluster)
+
     return client
 
 
 def myinit():
-    ROOT.gSystem.CompileMacro("helper.cpp", "kO")
+#    if not os.path.exists("helper.cpp"):
+#        raise RuntimeError(f"helper.cpp not found, looking for in {os.getcwd()} ")
+#   else:
+#        print("helper.cpp found!")
+    ROOT.gSystem.CompileMacro("/hpcscratch/user/vpadulan/analysis-grand-challenge/rdf-distributed/helper.cpp", "kO")
     ROOT.gInterpreter.Declare(f"""
     #ifndef MYPTR
     #define MYPTR
@@ -115,7 +129,7 @@ class TtbarAnalysis(dict):
                 if self.n_files_max_per_sample != -1:
                     file_list = file_list[:self.n_files_max_per_sample]  # use partial set of samples
                 file_paths = [f["path"] for f in file_list]
-                if (self.storage_location == "cern-xrootd"):
+                if self.storage_location == "cern-xrootd":
                     if self.use_merged_dataset:
                         file_paths = [f.replace("https://xrootd-local.unl.edu:1094//store/user/AGC",
                                                 "root://eoscms.cern.ch//eos/cms/store/test/agc") for f in file_paths]
@@ -145,8 +159,8 @@ class TtbarAnalysis(dict):
 
         # all operations are handled by RDataFrame class, so the first step is the RDataFrame object instantiating
         input_data = self.input_data[process][variation]
-        d = RDataFrame('events', input_data, daskclient=connection, npartitions=ARGS.ncores)
-        d._headnode.backend.distribute_unique_paths(["helper.cpp"])
+        d = RDataFrame('events', input_data, daskclient=connection, npartitions=ARGS.npartitions)
+        d._headnode.backend.distribute_unique_paths(["/hpcscratch/user/vpadulan/analysis-grand-challenge/rdf-distributed/helper.cpp"])
 
         # normalization for MC
         x_sec = self.xsec_info[process]
@@ -313,7 +327,7 @@ class TtbarAnalysis(dict):
             json.dump(data, f)
 
 
-def analyse():
+def analyse(conn):
     initialize(myinit)
     analysisManager = TtbarAnalysis(download_input_data=ARGS.download,
                                     n_files_max_per_sample=ARGS.n_files_max_per_sample,
@@ -325,22 +339,21 @@ def analyse():
     print(
         f"\nexample of information inside analysisManager:\n{{\n  'urls': [{analysisManager.input_data['ttbar']['nominal'][0]}, ...],")
 
-    with create_connection() as conn:
-        t0 = time.time()
-        analysisManager.Fill(connection=conn)
-        t1 = time.time()
+    t0 = time.time()
+    analysisManager.Fill(connection=conn)
+    t1 = time.time()
 
-        print(f"\npreprocessing took {round(t1 - t0,2)} seconds")
+    print(f"\npreprocessing took {round(t1 - t0,2)} seconds")
 
-        analysisManager.Accumulate()
-        t2 = time.time()
+    analysisManager.Accumulate()
+    t2 = time.time()
 
-        print(f"processing took {round(t2 - t1,2)} seconds")
-        print(f"execution took {round(t2 - t0,2)} seconds")
+    print(f"processing took {round(t2 - t1,2)} seconds")
+    print(f"execution took {round(t2 - t0,2)} seconds")
 
     analysisManager.TransfToDict()
 
-    return analysisManager
+    return analysisManager, round(t2 - t0, 2)
 
 
 def make_plots(analysisManager):
@@ -406,7 +419,13 @@ def make_plots(analysisManager):
 
 def main():
 
-    results = analyse()
+    with create_connection(ARGS.nodes, ARGS.ncores) as conn:
+        for _ in range(ARGS.ntests):
+            results, runtime = analyse(conn)
+            with open("results.csv", "a") as f:
+                n_nodes = len(ARGS.nodes.split(","))
+                f.write(f"{n_nodes},{ARGS.ncores},{ARGS.npartitions},{runtime}\n")
+
     make_plots(results)
 
 
