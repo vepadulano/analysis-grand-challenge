@@ -44,7 +44,7 @@ def myinit():
 
 class TtbarAnalysis(dict):
 
-    def __init__(self, n_files_max_per_sample,  download_input_data, storage_location, use_merged_dataset, num_bins=25, bin_low=50, bin_high=550):
+    def __init__(self, n_files_max_per_sample, download_input_data, storage_location, use_merged_dataset, num_bins=25, bin_low=50, bin_high=550):
 
         # Store input arguments
         self.n_files_max_per_sample = n_files_max_per_sample  # the number of files to be processed per sample
@@ -244,7 +244,7 @@ class TtbarAnalysis(dict):
             res = fork.Histo1D((f'{process}_{variation}_{region}', process, self.num_bins,
                                self.bin_low, self.bin_high), observable, 'weights')
             self.hist.append(res)  # save the pointer to further triggering
-            print(f'histogram {region}_{process}_{variation} has been created')
+            print(f'histogram {process}_{variation}_{region} has been created')
 
             # save pointers for variations
             # self.variations is a temporary container for all pointers
@@ -282,11 +282,24 @@ class TtbarAnalysis(dict):
         self.ExportJSON()
 
     def GetProcStack(self, region, variation='nominal'):
-        return [self[process][variation][region] for process in self]
+        ret = []
+        for process in self:
+            hval = self[process][variation][region]
+            print(f"Retrieving {hval=} for {process=},{variation=},{region=}")
+            ret.append(hval)
+        # ret = [self[process][variation][region] for process in self]
+        return ret
 
-    def GetVarStack(self, region, process="ttbar"):
-        ret = [self[process][variation][region] for variation in self[process]]
-        ret = [h.GetValue() for h in ret if not isinstance(h, ROOT.TH1D)]
+    def GetVarStack(self, region, process="ttbar", variations=None):
+        ret = []
+        variations = variations if variations is not None else self[process].keys()
+        for variation in variations:
+            h = self[process][variation][region]
+            hval = h.GetValue() if not isinstance(h, ROOT.TH1D) else h
+            print(f"Retrieving {hval=} for {process=},{variation=},{region=}")
+            ret.append(hval)
+        # ret = [self[process][variation][region] for variation in self[process]]
+        # ret = [h.GetValue() for h in ret if not isinstance(h, ROOT.TH1D)]
         return ret
 
     # necessary only for sanity checks
@@ -358,14 +371,16 @@ def make_plots(analysisManager):
     c.BuildLegend(0.65, 0.7, 0.9, 0.9)
     c.SaveAs('reg2.png')
 
-    freshstack = analysisManager.GetVarStack(region='4j1b')
+    btag_variations = ["nominal", "btag_var_0_up", "btag_var_1_up", "btag_var_2_up", "btag_var_3_up"]
+    freshstack = analysisManager.GetVarStack(region='4j1b', variations=btag_variations)
     hs = THStack('j4b1btag', 'btag-variations ; H_{T} [GeV]')
-    for h in freshstack:
-        ptr = h.Rebin(2, h.GetTitle())
-        ptr.SetFillColor(0)
-        ptr.SetLineWidth(1)
+    for h, name in zip(freshstack, btag_variations):
+        print(name)
+        ptr = h.Rebin(2, name)
+        ptr.SetLineWidth(2)
+        ptr.SetTitle(name)
         hs.Add(ptr)
-    hs.Draw('hist nostack')
+    hs.Draw('hist nostack plc')
     c.Draw()
     x = hs.GetXaxis()
     x.SetRangeUser(120, 500)
@@ -373,6 +388,24 @@ def make_plots(analysisManager):
     x.CenterTitle()
     c.BuildLegend(0.65, 0.7, 0.9, 0.9)
     c.SaveAs('btag.png')
+
+    jet_variations = ["nominal", "pt_scale_up", "pt_res_up"]
+    freshstack = analysisManager.GetVarStack(region='4j2b', variations=jet_variations)
+    hs = THStack('4j2bjet', 'Jet energy variations ; m_{bjj} [GeV]')
+    for h, name in zip(freshstack, jet_variations):
+        print(name)
+        h.SetFillColor(0)
+        h.SetLineWidth(2)
+        h.SetTitle(name)
+        hs.Add(h)
+    hs.Draw('hist nostack plc')
+    c.Draw()
+    x = hs.GetXaxis()
+    x.SetRangeUser(0, 550)
+    x.SetTitleOffset(1.5)
+    x.CenterTitle()
+    c.BuildLegend(0.65, 0.7, 0.9, 0.9)
+    c.SaveAs('jet.png')
 
     output = ROOT.TFile.Open(ARGS.histograms_output_file, 'RECREATE')
     for process in analysisManager:

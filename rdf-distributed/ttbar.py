@@ -8,7 +8,7 @@ from urllib.request import urlretrieve
 from ROOT import TCanvas, THStack
 import ROOT
 
-from distributed import Client, SSHCluster
+from distributed import Client, LocalCluster, SSHCluster
 
 
 RDataFrame = ROOT.RDF.Experimental.Distributed.Dask.RDataFrame
@@ -39,20 +39,24 @@ if ARGS.verbose:
         ROOT.Detail.RDF.RDFLogChannel(), ROOT.Experimental.ELogLevel.kInfo)
 
 
-def create_connection(nodes, ncores) -> Client:
-    parsed_nodes = nodes.split(',')
-    scheduler = parsed_nodes[:1]
-    workers = parsed_nodes[1:]
+# def create_connection(nodes, ncores) -> Client:
+#     parsed_nodes = nodes.split(',')
+#     scheduler = parsed_nodes[:1]
+#     workers = parsed_nodes[1:]
 
-    print("List of nodes: scheduler ({}) and workers ({})".format(scheduler, workers))
+#     print("List of nodes: scheduler ({}) and workers ({})".format(scheduler, workers))
 
-    cluster = SSHCluster(scheduler + workers,
-              connect_options={ "known_hosts": None },
-              worker_options={ "nprocs" : ncores, "nthreads": 1, "memory_limit" : "32GB", "local_directory" : "/tmp/vpadulan" })
+#     cluster = SSHCluster(scheduler + workers,
+#               connect_options={ "known_hosts": None },
+#               worker_options={ "nprocs" : ncores, "nthreads": 1, "memory_limit" : "32GB", "local_directory" : "/tmp/vpadulan" })
+#     client = Client(cluster)
+
+#     return client
+
+def create_connection(_, ncores):
+    cluster = LocalCluster(n_workers=ncores, threads_per_worker=1, processes=True)
     client = Client(cluster)
-
     return client
-
 
 def myinit():
 #    if not os.path.exists("helper.cpp"):
