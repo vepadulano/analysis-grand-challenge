@@ -1,10 +1,4 @@
-# Benchmarks using the Analysis Grand Challenge to test performance of reading data from EOS
-
-## Hardware setup
-
-* AMD EPYC 7702P 64-Core Processor (1 socket, 2 threads per core)
-* 100 Gbit/s connection
-* 130 GB RAM
+# Benchmarks of the Analysis Grand Challenge implemented with RDataFrame
 
 ## Software setup
 
@@ -21,9 +15,7 @@ https://github.com/iris-hep/analysis-grand-challenge/commit/c0b7e781102376dc5c92
 The RDF version is taken from https://github.com/andriiknu/RDF/ ,adapted for
 distributed case.
 
-## How to run the benchmarks
+## Categories
 
-The `run_all.sh` script can be used to run all the benchmarks in all folders.
-In each folder, the benchmarks are first executed on the original dataset and
-then on the merged dataset. Summary tables will be created in each directory,
-inside the `results-*` sub-folders, after all benchmarks have run.
+Different folders correspond to different configurations of the benchmark. The various configurations include
+multithreading/distributed, traditional RDF with strings containing C++ code as well as pythonized interface.
