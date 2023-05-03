@@ -7,8 +7,6 @@ import ROOT
 from ROOT import TCanvas, THStack
 
 import numpy
-import awkward
-import utils
 
 RDataFrame = ROOT.RDataFrame
 RunGraphs = ROOT.RDF.RunGraphs
@@ -37,15 +35,6 @@ if ARGS.verbose:
 
 def myinit():
     ROOT.gSystem.CompileMacro("helper.cpp", "kO")
-    ROOT.gInterpreter.Declare(f"""
-    #ifndef MYPTR
-    #define MYPTR
-    auto pt_res_up_obj = pt_res_up({ROOT.GetThreadPoolSize()});
-    #endif
-    """)
-
-
-myinit()
 
 
 class TtbarAnalysis(dict):
@@ -127,6 +116,18 @@ class TtbarAnalysis(dict):
 
     def fill(self, process, variation):
 
+        build_jetp4 = ROOT.RVecPxPyPzMVectorBuilder()
+        combinations = ROOT.CombinationsBuilder()
+        build_trijetp4 = ROOT.TriJetP4Builder()
+        build_trijetpt = ROOT.TriJetPtBuilder()
+        build_trijetbtag = ROOT.TriJetBTagBuilder()
+        get_ntrijet = ROOT.NTriJetBuilder()
+        build_observable = ROOT.ObservableBuilder()
+
+        jet_pt_variations = ROOT.JetPtVariationBuilder()
+        weight_variations = ROOT.VariedWeights()
+        btag_weight_variations = ROOT.BTagVariationBuilder()
+
         # analysis algorithm themself implemented here
         # fill function accepts parameters pair (process, variation) to which are assigned files in self.input_data
 
@@ -148,12 +149,12 @@ class TtbarAnalysis(dict):
             # pt_scale_up() - jet energy scaly systematic
             # pt_res_up(jet_pt) - jet resolution systematic
 
-            d = d.Vary("jet_pt", ROOT.JetPtVariationBuilder(), ["jet_pt"], ["pt_scale_up", "pt_res_up"])
+            d = d.Vary("jet_pt", jet_pt_variations, ["jet_pt"], ["pt_scale_up", "pt_res_up"])
             if process == 'wjets':
 
                 # flat weight variation definition
                 d = d.Vary('weights',
-                           ROOT.VariedWeights(),
+                           weight_variations,
                            ["weights"],
                            [f"scale_var_{direction}" for direction in ["up", "down"]]
                            )
@@ -170,8 +171,8 @@ class TtbarAnalysis(dict):
 
         # b-tagging variations for nominal samples
         d = d.Vary('weights',
-                   ROOT.BTagVariationBuilder(),
-                   ["jet_pt","jet_pt_mask","weights"],
+                   btag_weight_variations,
+                   ["jet_pt", "jet_pt_mask", "weights"],
                    [f"{weight_name}_{direction}" for weight_name in [f"btag_var_{i}" for i in range(4)] for direction in [
                        "up", "down"]]
                    ) if variation == 'nominal' else d
@@ -193,28 +194,28 @@ class TtbarAnalysis(dict):
 
                 # select events with at least 2 b-tagged jets
                 # building four-momentum vectors for each jet
-                fork = d.Filter(lambda jet_btag, jet_pt_mask: numpy.sum(jet_btag[jet_pt_mask] >= 0.5) > 1)\
-                        .Define("jet_p4", utils.build_jetp4, ["jet_px", "jet_py", "jet_pz", "jet_mass", "jet_pt_mask"])
+                fork = d.Filter(lambda jet_btag, jet_pt_mask: numpy.sum(jet_btag[jet_pt_mask] > 0.5) >= 2)\
+                        .Define("jet_p4", build_jetp4, ["jet_px", "jet_py", "jet_pz", "jet_mass", "jet_pt_mask"])
 
                 # building trijet combinations
-                fork = fork.Define('trijet', utils.combinations, ["jet_pt", "jet_pt_mask"])\
-                           .Define('ntrijet', utils.get_ntrijet, ["trijet"])
+                fork = fork.Define('trijet', combinations, ["jet_pt", "jet_pt_mask"])\
+                           .Define('ntrijet', get_ntrijet, ["trijet"])
 
                 # assigning four-momentums to each trijet combination
                 fork = fork.Define('trijet_p4',
-                                   utils.build_trijetp4,
+                                   build_trijetp4,
                                    ["jet_p4", "trijet", "ntrijet"]
                                    )
 
                 # getting trijet transverse momentum values from four-momentum vectors
                 fork = fork.Define('trijet_pt',
-                                   utils.build_trijetpt,
+                                   build_trijetpt,
                                    ["trijet_p4"]
                                    )
 
                 # trijet_btag is a helpful array of bool values indicating whether or not the maximum btag value in trijet is larger than 0.5 threshold
                 fork = fork.Define('trijet_btag',
-                                   utils.build_trijetbtag,
+                                   build_trijetbtag,
                                    ["ntrijet", "trijet", "jet_btag"]
                                    )
 
@@ -222,7 +223,7 @@ class TtbarAnalysis(dict):
                 # get mass for found jet four-vector
                 # trijet mass themself is an observable quantity
                 fork = fork.Define(observable,
-                                   utils.build_observable, ["ntrijet", "trijet_pt", "trijet_btag", "trijet_p4"]
+                                   build_observable, ["ntrijet", "trijet_pt", "trijet_btag", "trijet_p4"]
                                    )
 
             # fill histogram for observable column in RDF object
@@ -376,6 +377,7 @@ def make_plots(analysisManager):
 
 
 def main():
+    myinit()
     ROOT.EnableImplicitMT(ARGS.ncores)
     print(f'The num of threads = {ROOT.GetThreadPoolSize()}')
     results = analyse()

@@ -16,6 +16,8 @@ servicex.yaml
 **/*.pcm
 **/*.d
 **/*.so
+**/data.json
+
 workshops/agctools2021/HZZ_analysis_pipeline/**/*.root
 workshops/agctools2021/HZZ_analysis_pipeline/*/*.pdf
 workshops/agctools2021/HZZ_analysis_pipeline/*/*.png
