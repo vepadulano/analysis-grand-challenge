@@ -201,12 +201,17 @@ class TtbarAnalysis(dict):
 
                 # assigning four-momentums to each trijet combination
                 fork = fork.Define('trijet_p4',
-                                   'ROOT::VecOps::RVec<ROOT::Math::PxPyPzMVector> trijet_p4(ntrijet);' +
-                                   'for (int i = 0; i < ntrijet; ++i) {' +
-                                   'int j1 = trijet[0][i]; int j2 = trijet[1][i]; int j3 = trijet[2][i];' +
-                                   'trijet_p4[i] = jet_p4[j1] + jet_p4[j2] + jet_p4[j3];' +
-                                   '}' +
-                                   'return trijet_p4;'
+                                   """
+                                   ROOT::RVec<ROOT::Math::PxPyPzMVector> trijet_p4(ntrijet);
+                                   for (int i = 0; i < ntrijet; ++i)
+                                   {
+                                       int j1 = trijet[0][i];
+                                       int j2 = trijet[1][i];
+                                       int j3 = trijet[2][i];
+                                       trijet_p4[i] = jet_p4[j1] + jet_p4[j2] + jet_p4[j3];
+                                   }
+                                   return trijet_p4;
+                                   """
                                    )
 
                 # getting trijet transverse momentum values from four-momentum vectors
