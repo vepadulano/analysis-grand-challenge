@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import time
+import uuid
 
 from urllib.request import urlretrieve
 
@@ -39,30 +40,31 @@ if ARGS.verbose:
         ROOT.Detail.RDF.RDFLogChannel(), ROOT.Experimental.ELogLevel.kInfo)
 
 
-# def create_connection(nodes, ncores) -> Client:
-#     parsed_nodes = nodes.split(',')
-#     scheduler = parsed_nodes[:1]
-#     workers = parsed_nodes[1:]
+def create_connection(nodes, ncores) -> Client:
+    parsed_nodes = nodes.split(',')
+    scheduler = parsed_nodes[:1]
+    workers = parsed_nodes[1:]
 
-#     print("List of nodes: scheduler ({}) and workers ({})".format(scheduler, workers))
+    print("List of nodes: scheduler ({}) and workers ({})".format(scheduler, workers))
 
-#     cluster = SSHCluster(scheduler + workers,
-#               connect_options={ "known_hosts": None },
-#               worker_options={ "nprocs" : ncores, "nthreads": 1, "memory_limit" : "32GB", "local_directory" : "/tmp/vpadulan" })
-#     client = Client(cluster)
-
-#     return client
-
-def create_connection(_, ncores):
-    cluster = LocalCluster(n_workers=ncores, threads_per_worker=1, processes=True)
+    cluster = SSHCluster(scheduler + workers,
+                         connect_options={"known_hosts": None},
+                         worker_options={"nprocs": ncores, "nthreads": 1, "memory_limit": "32GB", "local_directory": "/tmp/vpadulan"})
     client = Client(cluster)
+
     return client
 
+# def create_connection(_, ncores) -> Client:
+#     cluster = LocalCluster(n_workers=ncores, threads_per_worker=1, processes=True)
+#     client = Client(cluster)
+#     return client
+
+
 def myinit():
-#    if not os.path.exists("helper.cpp"):
-#        raise RuntimeError(f"helper.cpp not found, looking for in {os.getcwd()} ")
-#   else:
-#        print("helper.cpp found!")
+    #    if not os.path.exists("helper.cpp"):
+    #        raise RuntimeError(f"helper.cpp not found, looking for in {os.getcwd()} ")
+    #   else:
+    #        print("helper.cpp found!")
     ROOT.gSystem.CompileMacro("/hpcscratch/user/vpadulan/analysis-grand-challenge/rdf-distributed/helper.cpp", "kO")
     ROOT.gInterpreter.Declare(f"""
     #ifndef MYPTR
@@ -164,7 +166,8 @@ class TtbarAnalysis(dict):
         # all operations are handled by RDataFrame class, so the first step is the RDataFrame object instantiating
         input_data = self.input_data[process][variation]
         d = RDataFrame('events', input_data, daskclient=connection, npartitions=ARGS.npartitions)
-        d._headnode.backend.distribute_unique_paths(["/hpcscratch/user/vpadulan/analysis-grand-challenge/rdf-distributed/helper.cpp"])
+        d._headnode.backend.distribute_unique_paths(
+            ["/hpcscratch/user/vpadulan/analysis-grand-challenge/rdf-distributed/helper.cpp"])
 
         # normalization for MC
         x_sec = self.xsec_info[process]
@@ -221,9 +224,11 @@ class TtbarAnalysis(dict):
 
                 # select events with at least 2 b-tagged jets
                 # building four-momentum vectors for each jet
-                fork = d.Filter('Sum(jet_btag[jet_pt_mask]>=0.5)>1').Define("jet_p4",
-                                                                            "ROOT::VecOps::Construct<ROOT::Math::PxPyPzMVector>(jet_px[jet_pt_mask], jet_py[jet_pt_mask], jet_pz[jet_pt_mask], jet_mass[jet_pt_mask])"
-                                                                            )
+                fork = (
+                    d.Filter('Sum(jet_btag[jet_pt_mask]>=0.5)>1')
+                    .Define("jet_p4",
+                            "ROOT::VecOps::Construct<ROOT::Math::XYZTVector>(ROOT::VecOps::Construct<ROOT::Math::PtEtaPhiMVector>(jet_pt[jet_pt_mask], jet_eta[jet_pt_mask], jet_phi[jet_pt_mask], jet_mass[jet_pt_mask]))"
+                            ))
 
                 # building trijet combinations
                 fork = fork.Define('trijet',
@@ -232,7 +237,7 @@ class TtbarAnalysis(dict):
 
                 # assigning four-momentums to each trijet combination
                 fork = fork.Define('trijet_p4',
-                                   'ROOT::VecOps::RVec<ROOT::Math::PxPyPzMVector> trijet_p4(ntrijet);' +
+                                   'ROOT::VecOps::RVec<ROOT::Math::XYZTVector> trijet_p4(ntrijet);' +
                                    'for (int i = 0; i < ntrijet; ++i) {' +
                                    'int j1 = trijet[0][i]; int j2 = trijet[1][i]; int j3 = trijet[2][i];' +
                                    'trijet_p4[i] = jet_p4[j1] + jet_p4[j2] + jet_p4[j3];' +
@@ -242,7 +247,7 @@ class TtbarAnalysis(dict):
 
                 # getting trijet transverse momentum values from four-momentum vectors
                 fork = fork.Define('trijet_pt',
-                                   'return ROOT::VecOps::Map(trijet_p4, [](ROOT::Math::PxPyPzMVector v) { return v.Pt(); })'
+                                   'return ROOT::VecOps::Map(trijet_p4, [](ROOT::Math::XYZTVector &v) { return v.Pt(); })'
                                    )
 
                 # trijet_btag is a helpful array of bool values indicating whether or not the maximum btag value in trijet is larger than 0.5 threshold
@@ -273,7 +278,7 @@ class TtbarAnalysis(dict):
 
             # fill histogram for observable column in RDF object
             res = fork.Histo1D((f'{process}_{variation}_{region}', process, self.num_bins,
-                               self.bin_low, self.bin_high), observable, 'weights')
+                                self.bin_low, self.bin_high), observable, 'weights')
             self.hist.append(res)  # save the pointer to further triggering
             print(f'histogram {region}_{process}_{variation} has been created')
 
@@ -313,14 +318,28 @@ class TtbarAnalysis(dict):
         self.ExportJSON()
 
     def GetProcStack(self, region, variation='nominal'):
-        return [self[process][variation][region] for process in self]
+        ret = []
+        for process in self:
+            hval = self[process][variation][region]
+            print(f"Retrieving {hval=} for {process=},{variation=},{region=}")
+            ret.append(hval)
+        # ret = [self[process][variation][region] for process in self]
+        return ret
 
-    def GetVarStack(self, region, process="ttbar"):
-        ret = [self[process][variation][region] for variation in self[process]]
-        ret = [h.GetValue() for h in ret if not isinstance(h, ROOT.TH1D)]
+    def GetVarStack(self, region, process="ttbar", variations=None):
+        ret = []
+        variations = variations if variations is not None else self[process].keys()
+        for variation in variations:
+            h = self[process][variation][region]
+            hval = h.GetValue() if not isinstance(h, ROOT.TH1D) else h
+            print(f"Retrieving {hval=} for {process=},{variation=},{region=}")
+            ret.append(hval)
+        # ret = [self[process][variation][region] for variation in self[process]]
+        # ret = [h.GetValue() for h in ret if not isinstance(h, ROOT.TH1D)]
         return ret
 
     # necessary only for sanity checks
+
     def ExportJSON(self):
         data = {}
         for process in self:
@@ -389,14 +408,16 @@ def make_plots(analysisManager):
     c.BuildLegend(0.65, 0.7, 0.9, 0.9)
     c.SaveAs('reg2.png')
 
-    freshstack = analysisManager.GetVarStack(region='4j1b')
+    btag_variations = ["nominal", "btag_var_0_up", "btag_var_1_up", "btag_var_2_up", "btag_var_3_up"]
+    freshstack = analysisManager.GetVarStack(region='4j1b', variations=btag_variations)
     hs = THStack('j4b1btag', 'btag-variations ; H_{T} [GeV]')
-    for h in freshstack:
-        ptr = h.Rebin(2, h.GetTitle())
-        ptr.SetFillColor(0)
-        ptr.SetLineWidth(1)
+    for h, name in zip(freshstack, btag_variations):
+        print(name)
+        ptr = h.Rebin(2, name)
+        ptr.SetLineWidth(2)
+        ptr.SetTitle(name)
         hs.Add(ptr)
-    hs.Draw('hist nostack')
+    hs.Draw('hist nostack plc')
     c.Draw()
     x = hs.GetXaxis()
     x.SetRangeUser(120, 500)
@@ -404,6 +425,24 @@ def make_plots(analysisManager):
     x.CenterTitle()
     c.BuildLegend(0.65, 0.7, 0.9, 0.9)
     c.SaveAs('btag.png')
+
+    jet_variations = ["nominal", "pt_scale_up", "pt_res_up"]
+    freshstack = analysisManager.GetVarStack(region='4j2b', variations=jet_variations)
+    hs = THStack('4j2bjet', 'Jet energy variations ; m_{bjj} [GeV]')
+    for h, name in zip(freshstack, jet_variations):
+        print(name)
+        h.SetFillColor(0)
+        h.SetLineWidth(2)
+        h.SetTitle(name)
+        hs.Add(h)
+    hs.Draw('hist nostack plc')
+    c.Draw()
+    x = hs.GetXaxis()
+    x.SetRangeUser(0, 550)
+    x.SetTitleOffset(1.5)
+    x.CenterTitle()
+    c.BuildLegend(0.65, 0.7, 0.9, 0.9)
+    c.SaveAs('jet.png')
 
     output = ROOT.TFile.Open(ARGS.histograms_output_file, 'RECREATE')
     for process in analysisManager:
@@ -423,12 +462,16 @@ def make_plots(analysisManager):
 
 def main():
 
+    if not os.path.exists("results.csv"):
+        with open("results.csv", "w") as f:
+            f.write(f"nodes,corespernode,partitions,runtime,test\n")
+
     with create_connection(ARGS.nodes, ARGS.ncores) as conn:
-        for _ in range(ARGS.ntests):
+        for i in range(ARGS.ntests):
             results, runtime = analyse(conn)
             with open("results.csv", "a") as f:
                 n_nodes = len(ARGS.nodes.split(","))
-                f.write(f"{n_nodes},{ARGS.ncores},{ARGS.npartitions},{runtime}\n")
+                f.write(f"{n_nodes},{ARGS.ncores},{ARGS.npartitions},{runtime},{i}\n")
 
     make_plots(results)
 

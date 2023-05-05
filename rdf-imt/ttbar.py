@@ -349,7 +349,10 @@ def analyse():
 
 def make_plots(analysisManager):
 
-    c = TCanvas('c', 'c', 3000 * 2, 2000 * 2)
+    width = 2160
+    height = 2160
+    c = TCanvas('c', 'c', width, height)
+    ROOT.gStyle.SetPalette(ROOT.kRainBow)
     hlist = analysisManager.GetProcStack(region='4j1b')
     hs = THStack('j4b1', '>=4 jets, 1 b-tag; H_{T} [GeV]')
     for h in hlist:
@@ -382,7 +385,7 @@ def make_plots(analysisManager):
     for h, name in zip(freshstack, btag_variations):
         print(name)
         ptr = h.Rebin(2, name)
-        ptr.SetLineWidth(2)
+        ptr.SetLineWidth(4)
         ptr.SetTitle(name)
         hs.Add(ptr)
     hs.Draw('hist nostack plc')
@@ -400,13 +403,13 @@ def make_plots(analysisManager):
     for h, name in zip(freshstack, jet_variations):
         print(name)
         h.SetFillColor(0)
-        h.SetLineWidth(2)
+        h.SetLineWidth(4)
         h.SetTitle(name)
         hs.Add(h)
     hs.Draw('hist nostack plc')
     c.Draw()
     x = hs.GetXaxis()
-    x.SetRangeUser(0, 550)
+    x.SetRangeUser(0, 600)
     x.SetTitleOffset(1.5)
     x.CenterTitle()
     c.BuildLegend(0.65, 0.7, 0.9, 0.9)
@@ -419,7 +422,7 @@ def make_plots(analysisManager):
                 hist_name = f"{region}_{process}_{variation}" if variation != 'nominal' else f"{region}_{process}"
                 hist = analysisManager[process][variation][region]
                 if not isinstance(hist, ROOT.TH1D):
-                    hist = hist.GetValue()  # this this a bag
+                    hist = hist.GetValue()  # this this a bug
                 if hist.IsZombie():
                     raise TypeError(hist_name)
                 hist_sliced = ROOT.Slice(hist, 120, 550)
